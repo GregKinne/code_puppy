@@ -14,6 +14,9 @@ wheels/
 # Session memory
 .puppy_session_memory.json
 
+# Local testing notes (not for upstream)
+LOCAL_TESTING.md
+
 # Pytest cache
 .pytest_cache/
 
