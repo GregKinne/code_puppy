@@ -136,49 +136,100 @@ class TestAllowRecursion:
 
 
 class TestPuppyTokens:
-    """Test puppy token configuration."""
+    """Test puppy token configuration with keyring + cfg fallback."""
 
-    def test_get_puppy_token_returns_value_if_set(self, mock_config_paths):
-        """Test getting puppy token when it's set."""
+    def test_get_reads_from_keyring_first(self, mock_config_paths):
+        """Keyring value wins over cfg."""
         mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
-
-        config = configparser.ConfigParser()
-        config["puppy"] = {"puppy_token": "secret-token-123"}
         os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"puppy_token": "cfg-stale"}
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        result = cp_config.get_puppy_token()
-        assert result == "secret-token-123"
+        with patch("code_puppy.secret_store.get_secret", return_value="keyring-fresh"):
+            assert cp_config.get_puppy_token() == "keyring-fresh"
 
-    def test_get_puppy_token_returns_none_if_not_set(self, mock_config_paths):
-        """Test getting puppy token when it's not set."""
+    def test_get_falls_back_to_cfg_and_migrates(self, mock_config_paths):
+        """No keyring value -> read cfg, migrate into keyring, scrub cfg."""
         mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"puppy_token": "legacy-tok"}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
 
+        with patch("code_puppy.secret_store.get_secret", return_value=None), \
+             patch("code_puppy.secret_store.set_secret", return_value=True) as mock_set:
+            result = cp_config.get_puppy_token()
+
+        assert result == "legacy-tok"
+        mock_set.assert_called_once_with("puppy_token", "legacy-tok")
+        # cfg key should be scrubbed after successful migration
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved.get("puppy", "puppy_token", fallback=None) is None
+
+    def test_get_leaves_cfg_when_keyring_unavailable(self, mock_config_paths):
+        """Legacy installs with no keyring keep working."""
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"puppy_token": "fallback-tok"}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        with patch("code_puppy.secret_store.get_secret", return_value=None), \
+             patch("code_puppy.secret_store.set_secret", return_value=False):
+            result = cp_config.get_puppy_token()
+
+        assert result == "fallback-tok"
+        # cfg key preserved since keyring rejected the write
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved["puppy"]["puppy_token"] == "fallback-tok"
+
+    def test_get_returns_none_when_nothing_set(self, mock_config_paths):
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
         config = configparser.ConfigParser()
         config["puppy"] = {}
-        os.makedirs(mock_cfg_dir, exist_ok=True)
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        result = cp_config.get_puppy_token()
-        assert result is None
+        with patch("code_puppy.secret_store.get_secret", return_value=None):
+            assert cp_config.get_puppy_token() is None
 
-    def test_set_puppy_token_persists_value(self, mock_config_paths):
-        """Test setting puppy token."""
+    def test_set_writes_to_keyring_and_scrubs_cfg(self, mock_config_paths):
         mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"puppy_token": "old"}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
 
+        with patch("code_puppy.secret_store.set_secret", return_value=True) as mock_set:
+            cp_config.set_puppy_token("new-token-456")
+
+        mock_set.assert_called_once_with("puppy_token", "new-token-456")
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved.get("puppy", "puppy_token", fallback=None) is None
+
+    def test_set_falls_back_to_cfg_when_keyring_unavailable(self, mock_config_paths):
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
         config = configparser.ConfigParser()
         config["puppy"] = {}
-        os.makedirs(mock_cfg_dir, exist_ok=True)
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        cp_config.set_puppy_token("new-token-456")
+        with patch("code_puppy.secret_store.set_secret", return_value=False):
+            cp_config.set_puppy_token("fallback-write")
 
-        saved_config = configparser.ConfigParser()
-        saved_config.read(mock_cfg_file)
-        assert saved_config["puppy"]["puppy_token"] == "new-token-456"
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved["puppy"]["puppy_token"] == "fallback-write"
 
 
 class TestXDGDirectoryHandling:

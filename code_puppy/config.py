@@ -5,6 +5,7 @@ import os
 import pathlib
 from typing import Optional
 
+from code_puppy.secret_store import delete_secret
 from code_puppy.session_storage import save_session
 
 
@@ -708,13 +709,27 @@ def set_summarization_model_name(model: str) -> None:
 
 
 def get_puppy_token():
-    """Returns the puppy_token from config, or None if not set."""
-    return get_value("puppy_token")
+    """Return the puppy token from keyring, falling back to puppy.cfg.
+
+    When a legacy cfg value is found, we best-effort migrate it into keyring
+    and scrub the plaintext config entry.
+    """
+    from code_puppy.secret_store import get_migrated_secret
+
+    return get_migrated_secret("puppy_token")
 
 
 def set_puppy_token(token: str):
-    """Sets the puppy_token in the persistent config file."""
-    set_config_value("puppy_token", token)
+    """Persist the puppy token to keyring with config-file fallback."""
+    normalized = str(token).strip()
+    if not normalized:
+        delete_secret("puppy_token")
+        reset_value("puppy_token")
+        return
+
+    from code_puppy.secret_store import set_migrated_secret
+
+    set_migrated_secret("puppy_token", normalized)
 
 
 def get_openai_reasoning_effort() -> str:
