@@ -1,6 +1,6 @@
 """OS secret storage for Code Puppy.
 
-Platform strategy (PUP-325):
+Platform strategy:
 
     **macOS** -- All secrets are consolidated into a single Keychain entry
     (a JSON blob under account ``__vault__``).  This limits the user to
@@ -36,8 +36,32 @@ try:
 except ImportError:  # pragma: no cover
     _keyring = None  # type: ignore[assignment]
 
-_SERVICE_NAME = "code-puppy"
+_service_name = "code-puppy"
 _VAULT_ACCOUNT = "__vault__"
+
+
+def get_service_name() -> str:
+    """Return the current keyring service name."""
+    return _service_name
+
+
+def configure_service_name(name: str) -> None:
+    """Override the keyring service name used for all secret operations.
+
+    Call this early at startup -- before any get/set/delete calls -- to
+    namespace secrets.  Enterprise or downstream forks typically call
+    this from a plugin ``startup`` callback::
+
+        from code_puppy.secret_store import configure_service_name
+        configure_service_name("my-fork")
+
+    The default is ``"code-puppy"``.
+    """
+    global _service_name
+    name = str(name).strip()
+    if not name:
+        raise ValueError("service name must be non-empty")
+    _service_name = name
 
 
 def _needs_consolidated_backend() -> bool:
@@ -69,7 +93,7 @@ class _DirectBackend:
 
     def get(self, name: str) -> str | None:
         try:
-            value = _keyring.get_password(_SERVICE_NAME, name)
+            value = _keyring.get_password(_service_name, name)
         except Exception:
             return None
         if value is None:
@@ -82,14 +106,14 @@ class _DirectBackend:
         if not normalized:
             return False
         try:
-            _keyring.set_password(_SERVICE_NAME, name, normalized)
+            _keyring.set_password(_service_name, name, normalized)
         except Exception:
             return False
         return True
 
     def delete(self, name: str) -> bool:
         try:
-            _keyring.delete_password(_SERVICE_NAME, name)
+            _keyring.delete_password(_service_name, name)
         except Exception:
             return False
         return True
@@ -98,7 +122,7 @@ class _DirectBackend:
 class _ConsolidatedBackend:
     """All secrets in a single JSON blob (macOS).
 
-    Stores a JSON dict under service ``code-puppy``, account
+    Stores a JSON dict under the configured service name, account
     ``__vault__`` so the user faces at most ONE Keychain prompt
     per Python binary change.
     """
@@ -110,7 +134,7 @@ class _ConsolidatedBackend:
 
     def _load_vault(self) -> dict[str, str]:
         try:
-            raw = _keyring.get_password(_SERVICE_NAME, _VAULT_ACCOUNT)
+            raw = _keyring.get_password(_service_name, _VAULT_ACCOUNT)
         except Exception:
             return {}
         if not raw:
@@ -124,7 +148,7 @@ class _ConsolidatedBackend:
     def _save_vault(self, vault: dict[str, str]) -> bool:
         try:
             _keyring.set_password(
-                _SERVICE_NAME, _VAULT_ACCOUNT, json.dumps(vault),
+                _service_name, _VAULT_ACCOUNT, json.dumps(vault),
             )
         except Exception:
             return False
@@ -135,8 +159,8 @@ class _ConsolidatedBackend:
     def _ensure_migrated(self) -> None:
         """Run-once hook for legacy entry consolidation.
 
-        In the generic (open-source) build this is a no-op.  The Walmart
-        plugin calls :func:`consolidate_legacy_keyring_entries` at startup
+        In the default build this is a no-op.  Downstream forks can
+        override this method or call a consolidation helper at startup
         to sweep individual entries into the vault before the first API
         call reaches this method.
         """

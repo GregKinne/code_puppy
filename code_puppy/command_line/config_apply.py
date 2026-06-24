@@ -60,13 +60,29 @@ def invalidate_post_write_caches(key: str) -> None:
         clear_model_cache()
 
 
+def _is_credential_key(key: str) -> bool:
+    """Return True when ``key`` looks like a provider API key or token.
+
+    Matches anything that ends with ``_API_KEY``, ``_TOKEN``, or
+    ``_SECRET`` (case-insensitive) so third-party model keys
+    (``FIREWORKS_API_KEY``, ``GROQ_API_KEY``, etc.) are caught
+    automatically without maintaining a static allow-list.
+    """
+    upper = key.upper()
+    return upper.endswith(("_API_KEY", "_TOKEN", "_SECRET"))
+
+
 def apply_setting(
     key: str,
     value: str,
     *,
     reload_agent: bool = True,
 ) -> ApplyResult:
-    """Persist ``key`` -> ``value`` to ``puppy.cfg`` with validation.
+    """Persist ``key`` -> ``value`` with validation.
+
+    Credential keys (ending in ``_API_KEY``, ``_TOKEN``, ``_SECRET``) are
+    written to the OS keyring with a plaintext ``puppy.cfg`` fallback.
+    All other keys go directly to ``puppy.cfg``.
 
     Parameters
     ----------
@@ -81,7 +97,7 @@ def apply_setting(
         per-edit and triggers a single reload at picker exit to avoid
         reload thrash when the user edits multiple settings.
     """
-    from code_puppy.config import set_config_value
+    from code_puppy.config import set_api_key, set_config_value
 
     if not key:
         return ApplyResult(ok=False, error="You must supply a key.")
@@ -108,7 +124,10 @@ def apply_setting(
         warning = _restart_notice("DBOS configuration")
         requires_restart = True
 
-    set_config_value(key, normalized_value)
+    if _is_credential_key(key):
+        set_api_key(key, normalized_value)
+    else:
+        set_config_value(key, normalized_value)
     invalidate_post_write_caches(key)
 
     reload_error: Optional[str] = None

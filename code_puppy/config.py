@@ -2090,7 +2090,10 @@ def set_output_level(level: str) -> None:
 
 # API Key management functions
 def get_api_key(key_name: str) -> str:
-    """Get an API key from puppy.cfg.
+    """Get an API key from keyring, falling back to puppy.cfg.
+
+    On first read, any legacy plaintext value in puppy.cfg is
+    auto-migrated into the OS keyring and scrubbed from the file.
 
     Args:
         key_name: The name of the API key (e.g., 'OPENAI_API_KEY')
@@ -2098,17 +2101,27 @@ def get_api_key(key_name: str) -> str:
     Returns:
         The API key value, or empty string if not set
     """
-    return get_value(key_name) or ""
+    from code_puppy.secret_store import get_migrated_secret
+
+    return get_migrated_secret(key_name) or ""
 
 
 def set_api_key(key_name: str, value: str):
-    """Set an API key in puppy.cfg.
+    """Persist an API key to the OS keyring with config-file fallback.
 
     Args:
         key_name: The name of the API key (e.g., 'OPENAI_API_KEY')
         value: The API key value (empty string to remove)
     """
-    set_config_value(key_name, value)
+    normalized = str(value).strip()
+    if not normalized:
+        delete_secret(key_name)
+        reset_value(key_name)
+        return
+
+    from code_puppy.secret_store import set_migrated_secret
+
+    set_migrated_secret(key_name, normalized)
 
 
 def load_api_keys_to_environment():
