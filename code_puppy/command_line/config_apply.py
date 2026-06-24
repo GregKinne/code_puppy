@@ -97,7 +97,8 @@ def apply_setting(
         per-edit and triggers a single reload at picker exit to avoid
         reload thrash when the user edits multiple settings.
     """
-    from code_puppy.config import set_api_key, set_config_value
+    from code_puppy.config import set_config_value
+    from code_puppy.secret_store import clear_migrated_secret, set_migrated_secret
 
     if not key:
         return ApplyResult(ok=False, error="You must supply a key.")
@@ -125,7 +126,10 @@ def apply_setting(
         requires_restart = True
 
     if _is_credential_key(key):
-        set_api_key(key, normalized_value)
+        if normalized_value:
+            set_migrated_secret(key, normalized_value)
+        else:
+            clear_migrated_secret(key)
     else:
         set_config_value(key, normalized_value)
     invalidate_post_write_caches(key)

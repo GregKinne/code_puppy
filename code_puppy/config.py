@@ -5,7 +5,7 @@ import os
 import pathlib
 from typing import Optional
 
-from code_puppy.secret_store import delete_secret, get_migrated_secret, set_migrated_secret
+from code_puppy.secret_store import clear_migrated_secret, delete_secret, get_migrated_secret, set_migrated_secret
 from code_puppy.session_storage import save_session
 
 
@@ -2085,37 +2085,6 @@ def set_output_level(level: str) -> None:
 
 
 # API Key management functions
-def get_api_key(key_name: str) -> str:
-    """Get an API key from keyring, falling back to puppy.cfg.
-
-    On first read, any legacy plaintext value in puppy.cfg is
-    auto-migrated into the OS keyring and scrubbed from the file.
-
-    Args:
-        key_name: The name of the API key (e.g., 'OPENAI_API_KEY')
-
-    Returns:
-        The API key value, or empty string if not set
-    """
-    return get_migrated_secret(key_name) or ""
-
-
-def set_api_key(key_name: str, value: str):
-    """Persist an API key to the OS keyring with config-file fallback.
-
-    Args:
-        key_name: The name of the API key (e.g., 'OPENAI_API_KEY')
-        value: The API key value (empty string to remove)
-    """
-    normalized = str(value).strip()
-    if not normalized:
-        delete_secret(key_name)
-        reset_value(key_name)
-        return
-
-    set_migrated_secret(key_name, normalized)
-
-
 def load_api_keys_to_environment():
     """Load all API keys from .env and puppy.cfg into environment variables.
 
@@ -2173,7 +2142,7 @@ def load_api_keys_to_environment():
     for key_name in api_key_names:
         # Only load from config if not already in environment
         if key_name not in os.environ or not os.environ[key_name]:
-            value = get_api_key(key_name)
+            value = get_migrated_secret(key_name) or ""
             if value:
                 os.environ[key_name] = value
 

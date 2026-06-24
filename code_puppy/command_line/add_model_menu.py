@@ -24,7 +24,8 @@ from code_puppy.command_line.pagination import (
     get_total_pages,
 )
 from code_puppy.command_line.utils import safe_input
-from code_puppy.config import EXTRA_MODELS_FILE, set_api_key, set_config_value
+from code_puppy.config import EXTRA_MODELS_FILE, set_config_value
+from code_puppy.secret_store import set_migrated_secret
 from code_puppy.list_filtering import query_matches_text
 from code_puppy.messaging import emit_error, emit_info, emit_warning
 from code_puppy.models_dev_parser import ModelInfo, ModelsDevRegistry, ProviderInfo
@@ -1017,7 +1018,7 @@ class AddModelMenu:
                     continue
 
                 # Save to keyring (falls back to config if keyring unavailable)
-                set_api_key(env_var, value)
+                set_migrated_secret(env_var, value)
                 # Also set in current environment so it's immediately available
                 os.environ[env_var] = value
                 emit_info(f" Saved {env_var} to keyring")

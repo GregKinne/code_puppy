@@ -94,47 +94,47 @@ class TestApplySettingCredentialRouting:
         "GROQ_API_KEY",
         "CUSTOM_API_KEY",
     ])
-    def test_api_keys_routed_to_set_api_key(self, key):
-        with patch("code_puppy.config.set_api_key") as mock_set_api, \
-             patch("code_puppy.config.set_config_value") as mock_set_cfg:
+    def test_api_keys_routed_to_set_migrated_secret(self, key):
+        with patch("code_puppy.secret_store.set_migrated_secret") as mock_set, \
+             patch("code_puppy.config.set_config_value") as mock_cfg:
             result = apply_setting(key, "sk-test-value", reload_agent=False)
 
         assert result.ok is True
-        mock_set_api.assert_called_once_with(key, "sk-test-value")
-        mock_set_cfg.assert_not_called()
+        mock_set.assert_called_once_with(key, "sk-test-value")
+        mock_cfg.assert_not_called()
 
     def test_plain_key_routed_to_set_config_value(self):
         with patch("code_puppy.config.set_config_value") as mock_set_cfg, \
-             patch("code_puppy.config.set_api_key") as mock_set_api:
+             patch("code_puppy.secret_store.set_migrated_secret") as mock_set:
             result = apply_setting("model", "gpt-4o", reload_agent=False)
 
         assert result.ok is True
         mock_set_cfg.assert_called_once_with("model", "gpt-4o")
-        mock_set_api.assert_not_called()
+        mock_set.assert_not_called()
 
-    def test_ty_routed_to_set_api_key(self):
-        with patch("code_puppy.config.set_api_key") as mock_set_api, \
-             patch("code_puppy.config.set_config_value") as mock_set_cfg:
+    def test_token_routed_to_set_migrated_secret(self):
+        with patch("code_puppy.secret_store.set_migrated_secret") as mock_set, \
+             patch("code_puppy.config.set_config_value") as mock_cfg:
             result = apply_setting("puppy_token", "tok-abc", reload_agent=False)
 
         assert result.ok is True
-        mock_set_api.assert_called_once_with("puppy_token", "tok-abc")
-        mock_set_cfg.assert_not_called()
+        mock_set.assert_called_once_with("puppy_token", "tok-abc")
+        mock_cfg.assert_not_called()
 
     def test_empty_key_returns_error(self):
         result = apply_setting("", "value", reload_agent=False)
         assert result.ok is False
         assert result.error
 
-    def test_clearing_api_key_with_empty_value(self):
-        """Empty value should still go through set_api_key (it handles deletion)."""
-        with patch("code_puppy.config.set_api_key") as mock_set_api, \
-             patch("code_puppy.config.set_config_value") as mock_set_cfg:
+    def test_clearing_api_key_calls_clear_migrated_secret(self):
+        """Empty value routes to clear_migrated_secret, not set."""
+        with patch("code_puppy.secret_store.clear_migrated_secret") as mock_clear, \
+             patch("code_puppy.secret_store.set_migrated_secret") as mock_set:
             result = apply_setting("OPENAI_API_KEY", "", reload_agent=False)
 
         assert result.ok is True
-        mock_set_api.assert_called_once_with("OPENAI_API_KEY", "")
-        mock_set_cfg.assert_not_called()
+        mock_clear.assert_called_once_with("OPENAI_API_KEY")
+        mock_set.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +146,8 @@ class TestApplySettingE2E:
     """Trace the full path from apply_setting down to secret_store."""
 
     def test_set_api_key_reaches_keyring(self, mock_config_paths):
-        """Full stack: apply_setting -> set_api_key -> set_migrated_secret -> keyring."""
-        with patch("code_puppy.secret_store.set_secret", return_value=True) as mock_kr, \
-             patch("code_puppy.agents.get_current_agent") as mock_agent:
-            mock_agent.return_value.reload_code_generation_agent.return_value = None
+        """Full stack: apply_setting -> set_migrated_secret -> keyring."""
+        with patch("code_puppy.secret_store.set_secret", return_value=True) as mock_kr:
             result = apply_setting("OPENAI_API_KEY", "sk-e2e-test", reload_agent=False)
 
         assert result.ok is True
@@ -167,9 +165,7 @@ class TestApplySettingE2E:
         with open(mock_cfg_file, "w") as f:
             cfg.write(f)
 
-        with patch("code_puppy.secret_store.set_secret", return_value=False), \
-             patch("code_puppy.agents.get_current_agent") as mock_agent:
-            mock_agent.return_value.reload_code_generation_agent.return_value = None
+        with patch("code_puppy.secret_store.set_secret", return_value=False):
             result = apply_setting("ANTHROPIC_API_KEY", "sk-ant-fallback", reload_agent=False)
 
         assert result.ok is True
