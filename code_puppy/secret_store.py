@@ -20,21 +20,13 @@ Two API layers:
 
     **High-level** (``get_migrated_secret`` / ``set_migrated_secret``)
         Keyring-first with puppy.cfg fallback and transparent migration.
-
-The ``keyring`` import is guarded so this module loads cleanly even
-when keyring is not installed.  All operations degrade gracefully:
-``keyring_available()`` returns ``False`` and every get/set/delete
-returns ``None`` / ``False``.
 """
 
 from __future__ import annotations
 
 import json
 
-try:
-    import keyring as _keyring
-except ImportError:  # pragma: no cover
-    _keyring = None  # type: ignore[assignment]
+import keyring as _keyring
 
 _service_name = "code-puppy"
 _VAULT_ACCOUNT = "__vault__"
@@ -212,11 +204,8 @@ def keyring_available() -> bool:
     """Return True when a usable keyring backend is configured.
 
     A backend with ``priority <= 0`` (e.g. the fail/null backend on
-    headless Linux) is treated as unavailable.  Also returns ``False``
-    when the ``keyring`` package is not installed.
+    headless Linux) is treated as unavailable.
     """
-    if _keyring is None:
-        return False
     try:
         backend = _keyring.get_keyring()
     except Exception:
