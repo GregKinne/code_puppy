@@ -5,7 +5,7 @@ import os
 import pathlib
 from typing import Optional
 
-from code_puppy.secret_store import delete_secret
+from code_puppy.secret_store import delete_secret, get_migrated_secret, set_migrated_secret
 from code_puppy.session_storage import save_session
 
 
@@ -714,8 +714,6 @@ def get_puppy_token():
     When a legacy cfg value is found, we best-effort migrate it into keyring
     and scrub the plaintext config entry.
     """
-    from code_puppy.secret_store import get_migrated_secret
-
     return get_migrated_secret("puppy_token")
 
 
@@ -726,8 +724,6 @@ def set_puppy_token(token: str):
         delete_secret("puppy_token")
         reset_value("puppy_token")
         return
-
-    from code_puppy.secret_store import set_migrated_secret
 
     set_migrated_secret("puppy_token", normalized)
 
@@ -2101,8 +2097,6 @@ def get_api_key(key_name: str) -> str:
     Returns:
         The API key value, or empty string if not set
     """
-    from code_puppy.secret_store import get_migrated_secret
-
     return get_migrated_secret(key_name) or ""
 
 
@@ -2118,8 +2112,6 @@ def set_api_key(key_name: str, value: str):
         delete_secret(key_name)
         reset_value(key_name)
         return
-
-    from code_puppy.secret_store import set_migrated_secret
 
     set_migrated_secret(key_name, normalized)
 
