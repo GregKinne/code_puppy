@@ -4,7 +4,7 @@ Covers both platform backends:
     - ``_DirectBackend`` (Windows / Linux) -- one entry per secret
     - ``_ConsolidatedBackend`` (macOS) -- all secrets in a single JSON blob
 
-Walmart-specific migration tests live in ``test_secret_store_migration.py``.
+Migration tests for downstream forks are not included here.
 """
 
 import json
@@ -16,6 +16,8 @@ from code_puppy import secret_store
 from code_puppy.secret_store import (
     _ConsolidatedBackend,
     _DirectBackend,
+    configure_service_name,
+    get_service_name,
 )
 
 
@@ -94,6 +96,64 @@ def broken_keyring():
         patch.object(secret_store, "_backend", direct),
     ):
         yield fake
+
+
+# ---------------------------------------------------------------------------
+# configure_service_name / get_service_name
+# ---------------------------------------------------------------------------
+
+
+class TestConfigureServiceName:
+    """Service name is configurable for enterprise/downstream namespacing."""
+
+    def teardown_method(self):
+        """Restore default after each test so we don't leak state."""
+        secret_store._service_name = "code-puppy"
+
+    def test_default_is_code_puppy(self):
+        assert get_service_name() == "code-puppy"
+
+    def test_can_override(self):
+        configure_service_name("my-fork")
+        assert get_service_name() == "my-fork"
+
+    def test_rejects_empty_string(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            configure_service_name("")
+
+    def test_rejects_whitespace_only(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            configure_service_name("   ")
+
+    def test_strips_whitespace(self):
+        configure_service_name("  padded  ")
+        assert get_service_name() == "padded"
+
+    def test_backends_use_configured_name(self, mock_keyring):
+        """After reconfiguring, secrets land under the new service name."""
+        _, store = mock_keyring
+        configure_service_name("enterprise-puppy")
+
+        secret_store.set_secret("tok", "val")
+        # Stored under the new name, NOT "code-puppy"
+        assert ("enterprise-puppy", "tok") in store
+        assert ("code-puppy", "tok") not in store
+
+        assert secret_store.get_secret("tok") == "val"
+
+    def test_consolidated_backend_uses_configured_name(
+        self, mock_keyring_consolidated,
+    ):
+        """Consolidated vault uses the overridden service name."""
+        _, store, _ = mock_keyring_consolidated
+        configure_service_name("enterprise-puppy")
+
+        secret_store.set_secret("tok", "vault-val")
+        assert ("enterprise-puppy", "__vault__") in store
+        assert ("code-puppy", "__vault__") not in store
+
+        vault = json.loads(store[("enterprise-puppy", "__vault__")])
+        assert vault["tok"] == "vault-val"
 
 
 # ---------------------------------------------------------------------------

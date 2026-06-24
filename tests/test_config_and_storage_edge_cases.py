@@ -232,6 +232,147 @@ class TestPuppyTokens:
         assert saved["puppy"]["puppy_token"] == "fallback-write"
 
 
+class TestApiKeyKeyring:
+    """get_api_key / set_api_key route through the OS keyring."""
+
+    def test_get_reads_from_keyring_first(self, mock_config_paths):
+        """Keyring value wins over a stale plaintext value in cfg."""
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"OPENAI_API_KEY": "cfg-stale"}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        with patch("code_puppy.secret_store.get_secret", return_value="kr-fresh"):
+            assert cp_config.get_api_key("OPENAI_API_KEY") == "kr-fresh"
+
+    def test_get_falls_back_to_cfg_and_migrates(self, mock_config_paths):
+        """No keyring value -> read cfg, migrate to keyring, scrub plaintext."""
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"ANTHROPIC_API_KEY": "sk-ant-legacy"}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        with patch("code_puppy.secret_store.get_secret", return_value=None), \
+             patch("code_puppy.secret_store.set_secret", return_value=True) as mock_set:
+            result = cp_config.get_api_key("ANTHROPIC_API_KEY")
+
+        assert result == "sk-ant-legacy"
+        mock_set.assert_called_once_with("ANTHROPIC_API_KEY", "sk-ant-legacy")
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved.get("puppy", "ANTHROPIC_API_KEY", fallback=None) is None
+
+    def test_get_leaves_cfg_when_keyring_write_fails(self, mock_config_paths):
+        """Keyring unavailable -> value stays in cfg, still returned to caller."""
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"GEMINI_API_KEY": "ai-legacy"}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        with patch("code_puppy.secret_store.get_secret", return_value=None), \
+             patch("code_puppy.secret_store.set_secret", return_value=False):
+            result = cp_config.get_api_key("GEMINI_API_KEY")
+
+        assert result == "ai-legacy"
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved["puppy"]["GEMINI_API_KEY"] == "ai-legacy"
+
+    def test_get_returns_empty_string_when_nothing_set(self, mock_config_paths):
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        with patch("code_puppy.secret_store.get_secret", return_value=None):
+            assert cp_config.get_api_key("OPENAI_API_KEY") == ""
+
+    def test_set_writes_to_keyring_and_scrubs_cfg(self, mock_config_paths):
+        """set_api_key stores in keyring and removes any plaintext copy."""
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"OPENAI_API_KEY": "old-plaintext"}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        with patch("code_puppy.secret_store.set_secret", return_value=True) as mock_set:
+            cp_config.set_api_key("OPENAI_API_KEY", "sk-new-123")
+
+        mock_set.assert_called_once_with("OPENAI_API_KEY", "sk-new-123")
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved.get("puppy", "OPENAI_API_KEY", fallback=None) is None
+
+    def test_set_falls_back_to_cfg_when_keyring_unavailable(self, mock_config_paths):
+        """When keyring write fails the value lands in cfg as a safety net."""
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        with patch("code_puppy.secret_store.set_secret", return_value=False):
+            cp_config.set_api_key("CEREBRAS_API_KEY", "csk-fallback")
+
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved["puppy"]["CEREBRAS_API_KEY"] == "csk-fallback"
+
+    def test_set_empty_value_deletes_from_keyring_and_cfg(self, mock_config_paths):
+        """Empty-string set clears from both stores."""
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {"OPENROUTER_API_KEY": "old"}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        # delete_secret is imported at the top of config.py so patch it there
+        with patch("code_puppy.config.delete_secret") as mock_del:
+            cp_config.set_api_key("OPENROUTER_API_KEY", "")
+
+        mock_del.assert_called_once_with("OPENROUTER_API_KEY")
+        saved = configparser.ConfigParser()
+        saved.read(mock_cfg_file)
+        assert saved.get("puppy", "OPENROUTER_API_KEY", fallback=None) is None
+
+    @pytest.mark.parametrize("key_name", [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "CEREBRAS_API_KEY",
+        "SYN_API_KEY",
+        "AZURE_OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "ZAI_API_KEY",
+        "GROQ_API_KEY",
+        "FIREWORKS_API_KEY",
+    ])
+    def test_all_known_provider_keys_go_through_keyring(self, mock_config_paths, key_name):
+        """Every known provider key routes through set_secret, not set_config_value."""
+        mock_cfg_dir, mock_cfg_file, _ = mock_config_paths
+        os.makedirs(mock_cfg_dir, exist_ok=True)
+        config = configparser.ConfigParser()
+        config["puppy"] = {}
+        with open(mock_cfg_file, "w") as f:
+            config.write(f)
+
+        with patch("code_puppy.secret_store.set_secret", return_value=True) as mock_set:
+            cp_config.set_api_key(key_name, "test-value")
+
+        mock_set.assert_called_once_with(key_name, "test-value")
+
+
 class TestXDGDirectoryHandling:
     """Test XDG Base Directory support."""
 
