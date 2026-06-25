@@ -42,6 +42,7 @@ STATE_DIR = _get_xdg_dir("XDG_STATE_HOME", ".local/state")
 # Configuration files (XDG_CONFIG_HOME)
 CONFIG_FILE = os.path.join(CONFIG_DIR, "puppy.cfg")
 MCP_SERVERS_FILE = os.path.join(CONFIG_DIR, "mcp_servers.json")
+_CONFIG_FILE_MODE = 0o600
 
 # Data files (XDG_DATA_HOME)
 MODELS_FILE = os.path.join(DATA_DIR, "models.json")
@@ -227,6 +228,7 @@ def ensure_config_exists():
     exists = os.path.isfile(CONFIG_FILE)
     config = configparser.ConfigParser()
     if exists:
+        _secure_config_file_permissions()
         config.read(CONFIG_FILE)
     missing = []
     if DEFAULT_SECTION not in config:
@@ -259,7 +261,19 @@ def ensure_config_exists():
     if missing or not exists:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             config.write(f)
+        _secure_config_file_permissions()
     return config
+
+
+def _secure_config_file_permissions() -> None:
+    """Best-effort chmod of ``puppy.cfg`` to 0o600."""
+    try:
+        if os.path.exists(CONFIG_FILE):
+            current_mode = os.stat(CONFIG_FILE).st_mode & 0o777
+            if current_mode != _CONFIG_FILE_MODE:
+                os.chmod(CONFIG_FILE, _CONFIG_FILE_MODE)
+    except OSError:
+        pass
 
 
 def get_value(key: str):
@@ -391,6 +405,7 @@ def set_config_value(key: str, value: str):
     config[DEFAULT_SECTION][key] = value
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         config.write(f)
+    _secure_config_file_permissions()
 
 
 # Alias for API compatibility
@@ -407,6 +422,7 @@ def reset_value(key: str) -> None:
         del config[DEFAULT_SECTION][key]
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             config.write(f)
+        _secure_config_file_permissions()
 
 
 # --- MODEL STICKY EXTENSION STARTS HERE ---
@@ -676,6 +692,7 @@ def set_model_name(model: str):
     config[DEFAULT_SECTION]["model"] = model or ""
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         config.write(f)
+    _secure_config_file_permissions()
 
     # Clear model cache when switching models to ensure fresh validation
     clear_model_cache()
@@ -959,6 +976,7 @@ def clear_model_settings(model_name: str) -> None:
 
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             config.write(f)
+        _secure_config_file_permissions()
 
 
 def get_effective_model_settings(model_name: Optional[str] = None) -> dict:
