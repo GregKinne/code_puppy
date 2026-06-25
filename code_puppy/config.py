@@ -5,7 +5,7 @@ import os
 import pathlib
 from typing import Optional
 
-from code_puppy.secret_store import clear_migrated_secret, delete_secret, get_migrated_secret, set_migrated_secret
+from code_puppy.secret_store import clear_migrated_secret, get_migrated_secret, set_migrated_secret
 from code_puppy.session_storage import save_session
 
 
@@ -721,8 +721,7 @@ def set_puppy_token(token: str):
     """Persist the puppy token to keyring with config-file fallback."""
     normalized = str(token).strip()
     if not normalized:
-        delete_secret("puppy_token")
-        reset_value("puppy_token")
+        clear_migrated_secret("puppy_token")
         return
 
     set_migrated_secret("puppy_token", normalized)

@@ -1021,7 +1021,7 @@ class AddModelMenu:
                 set_migrated_secret(env_var, value)
                 # Also set in current environment so it's immediately available
                 os.environ[env_var] = value
-                emit_info(f" Saved {env_var} to keyring")
+                emit_info(f"✅ Saved {env_var} to keyring")
 
             except (KeyboardInterrupt, EOFError):
                 emit_info("")  # Clean newline
