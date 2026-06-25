@@ -15,11 +15,12 @@ Platform strategy:
 
 Two API layers:
 
-    **Low-level** (``get_secret`` / ``set_secret`` / ``delete_secret``)
+    **Low-level** (``keyring_get`` / ``keyring_set`` / ``keyring_delete``)
         Pure keyring operations routed through the platform backend.
 
-    **High-level** (``get_migrated_secret`` / ``set_migrated_secret``)
-        Keyring-first with puppy.cfg fallback and transparent migration.
+    **High-level** (``get_secret`` / ``set_secret`` / ``delete_secret``)
+        Keyring-first secret operations with ``puppy.cfg`` fallback and
+        transparent promotion of legacy config values.
 """
 
 from __future__ import annotations
@@ -196,7 +197,7 @@ _backend: _DirectBackend | _ConsolidatedBackend = (
 
 
 # ===================================================================
-# Public low-level API
+# Public low-level API — direct keyring access
 # ===================================================================
 
 
@@ -219,83 +220,86 @@ def keyring_available() -> bool:
         return True
 
 
-def get_secret(name: str) -> str | None:
-    """Read a secret from the OS keyring."""
+def keyring_get(name: str) -> str | None:
+    """Read a secret directly from the OS keyring with no cfg fallback."""
     return _backend.get(name)
 
 
-def set_secret(name: str, value: str) -> bool:
-    """Persist ``value`` in the OS keyring.  Returns True on success."""
+def keyring_set(name: str, value: str) -> bool:
+    """Persist ``value`` directly in the OS keyring.
+
+    Returns True on success.
+    """
     return _backend.set(name, value)
 
 
-def delete_secret(name: str) -> bool:
+def keyring_delete(name: str) -> bool:
     """Best-effort delete of a secret from the OS keyring."""
     return _backend.delete(name)
 
 
 # ===================================================================
-# High-level: keyring-first with puppy.cfg fallback + auto-migration
+# Public high-level API — keyring-first with cfg fallback and promotion
 # ===================================================================
 
 
-def get_migrated_secret(cfg_key: str) -> str | None:
-    """Read a secret, preferring keyring with cfg fallback and auto-migration.
+def get_secret(name: str) -> str | None:
+    """Read a secret via keyring, falling back to cfg and promoting legacy values.
 
-    1. Try keyring (fast path).
-    2. Fall back to ``puppy.cfg`` via ``get_value(cfg_key)``.
-    3. If found in cfg and keyring is available, migrate it to keyring and
-       scrub the plaintext from cfg.
+    1. Try keyring first.
+    2. Fall back to ``puppy.cfg`` via ``get_value(name)``.
+    3. If the cfg value can be written to keyring, scrub the plaintext cfg entry.
 
     Returns ``None`` when the secret is not stored anywhere.
     """
-    kr_value = get_secret(cfg_key)
+    kr_value = keyring_get(name)
     if kr_value:
         return kr_value
 
     from code_puppy.config import get_value, reset_value
 
-    cfg_value = get_value(cfg_key)
+    cfg_value = get_value(name)
     if not cfg_value:
         return None
 
     # Best-effort migrate to keyring and scrub plaintext.
-    if set_secret(cfg_key, cfg_value):
+    if keyring_set(name, cfg_value):
         try:
-            reset_value(cfg_key)
+            reset_value(name)
         except Exception:
             pass
 
     return cfg_value
 
 
-def set_migrated_secret(cfg_key: str, value: str) -> None:
-    """Write a secret to keyring (preferred) with cfg fallback.
+def set_secret(name: str, value: str) -> None:
+    """Write a secret to keyring, falling back to cfg when needed.
 
-    On successful keyring write the cfg key is scrubbed. When the keyring
-    backend rejects the write, the value is written to ``puppy.cfg``
-    with ``0o600`` perms (the secure fallback path for headless / CI).
+    On a successful keyring write, the same key is scrubbed from cfg. When
+    the keyring backend rejects the write, the value is written to
+    ``puppy.cfg`` with ``0o600`` perms, which is the secure fallback path
+    for headless or CI environments.
     """
-    if set_secret(cfg_key, value):
+    if keyring_set(name, value):
         # Scrub from cfg if it was there.
         from code_puppy.config import reset_value
 
         try:
-            reset_value(cfg_key)
+            reset_value(name)
         except Exception:
             pass
     else:
         from code_puppy.config import set_config_value
 
-        set_config_value(cfg_key, value)
+        set_config_value(name, value)
 
 
-def clear_migrated_secret(cfg_key: str) -> None:
-    """Remove a secret from both keyring and cfg."""
-    delete_secret(cfg_key)
+def delete_secret(name: str) -> None:
+    """Best-effort removal of a secret from both keyring and cfg."""
+    keyring_delete(name)
     from code_puppy.config import reset_value
 
     try:
-        reset_value(cfg_key)
+        reset_value(name)
     except Exception:
         pass

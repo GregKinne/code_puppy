@@ -80,8 +80,9 @@ def apply_setting(
 ) -> ApplyResult:
     """Persist ``key`` -> ``value`` with validation.
 
-    Credential keys (ending in ``_API_KEY``, ``_TOKEN``, ``_SECRET``) are
-    written to the OS keyring with a plaintext ``puppy.cfg`` fallback.
+    Credential keys ending in ``_API_KEY``, ``_TOKEN``, or ``_SECRET`` are
+    written through Code Puppy's secret store, which prefers the OS keyring
+    and falls back to ``puppy.cfg`` when keyring storage is unavailable.
     All other keys go directly to ``puppy.cfg``.
 
     Parameters
@@ -98,7 +99,7 @@ def apply_setting(
         reload thrash when the user edits multiple settings.
     """
     from code_puppy.config import set_config_value
-    from code_puppy.secret_store import clear_migrated_secret, set_migrated_secret
+    from code_puppy.secret_store import delete_secret, set_secret
 
     if not key:
         return ApplyResult(ok=False, error="You must supply a key.")
@@ -127,9 +128,9 @@ def apply_setting(
 
     if _is_credential_key(key):
         if normalized_value:
-            set_migrated_secret(key, normalized_value)
+            set_secret(key, normalized_value)
         else:
-            clear_migrated_secret(key)
+            delete_secret(key)
     else:
         set_config_value(key, normalized_value)
     invalidate_post_write_caches(key)

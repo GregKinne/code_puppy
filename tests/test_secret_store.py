@@ -134,12 +134,12 @@ class TestConfigureServiceName:
         _, store = mock_keyring
         configure_service_name("enterprise-puppy")
 
-        secret_store.set_secret("tok", "val")
+        secret_store.keyring_set("tok", "val")
         # Stored under the new name, NOT "code-puppy"
         assert ("enterprise-puppy", "tok") in store
         assert ("code-puppy", "tok") not in store
 
-        assert secret_store.get_secret("tok") == "val"
+        assert secret_store.keyring_get("tok") == "val"
 
     def test_consolidated_backend_uses_configured_name(
         self, mock_keyring_consolidated,
@@ -148,7 +148,7 @@ class TestConfigureServiceName:
         _, store, _ = mock_keyring_consolidated
         configure_service_name("enterprise-puppy")
 
-        secret_store.set_secret("tok", "vault-val")
+        secret_store.keyring_set("tok", "vault-val")
         assert ("enterprise-puppy", "__vault__") in store
         assert ("code-puppy", "__vault__") not in store
 
@@ -191,47 +191,47 @@ class TestDirectGetSecret:
     def test_returns_value(self, mock_keyring):
         _, store = mock_keyring
         store[("code-puppy", "my_key")] = "hunter2"
-        assert secret_store.get_secret("my_key") == "hunter2"
+        assert secret_store.keyring_get("my_key") == "hunter2"
 
     def test_returns_none_when_missing(self, mock_keyring):
-        assert secret_store.get_secret("nope") is None
+        assert secret_store.keyring_get("nope") is None
 
     def test_strips_whitespace(self, mock_keyring):
         _, store = mock_keyring
         store[("code-puppy", "k")] = "  spaced  "
-        assert secret_store.get_secret("k") == "spaced"
+        assert secret_store.keyring_get("k") == "spaced"
 
     def test_returns_none_for_blank_value(self, mock_keyring):
         _, store = mock_keyring
         store[("code-puppy", "k")] = "   "
-        assert secret_store.get_secret("k") is None
+        assert secret_store.keyring_get("k") is None
 
     def test_swallows_runtime_exception(self, broken_keyring):
-        assert secret_store.get_secret("any") is None
+        assert secret_store.keyring_get("any") is None
 
 
 class TestDirectSetSecret:
     def test_stores_value(self, mock_keyring):
         _, store = mock_keyring
-        assert secret_store.set_secret("tok", "abc123") is True
+        assert secret_store.keyring_set("tok", "abc123") is True
         assert store[("code-puppy", "tok")] == "abc123"
 
     def test_rejects_blank(self, mock_keyring):
-        assert secret_store.set_secret("tok", "   ") is False
+        assert secret_store.keyring_set("tok", "   ") is False
 
     def test_returns_false_on_runtime_failure(self, broken_keyring):
-        assert secret_store.set_secret("tok", "abc") is False
+        assert secret_store.keyring_set("tok", "abc") is False
 
 
 class TestDirectDeleteSecret:
     def test_deletes_existing(self, mock_keyring):
         _, store = mock_keyring
         store[("code-puppy", "tok")] = "old"
-        assert secret_store.delete_secret("tok") is True
+        assert secret_store.keyring_delete("tok") is True
         assert ("code-puppy", "tok") not in store
 
     def test_returns_false_on_runtime_failure(self, broken_keyring):
-        assert secret_store.delete_secret("tok") is False
+        assert secret_store.keyring_delete("tok") is False
 
 
 # ---------------------------------------------------------------------------
@@ -244,40 +244,40 @@ class TestConsolidatedGetSecret:
         _, store, _ = mock_keyring_consolidated
         vault = {"my_key": "vault-value"}
         store[("code-puppy", "__vault__")] = json.dumps(vault)
-        assert secret_store.get_secret("my_key") == "vault-value"
+        assert secret_store.keyring_get("my_key") == "vault-value"
 
     def test_returns_none_when_key_missing(self, mock_keyring_consolidated):
         _, store, _ = mock_keyring_consolidated
         store[("code-puppy", "__vault__")] = json.dumps({"other": "val"})
-        assert secret_store.get_secret("my_key") is None
+        assert secret_store.keyring_get("my_key") is None
 
     def test_returns_none_when_vault_empty(self, mock_keyring_consolidated):
-        assert secret_store.get_secret("any") is None
+        assert secret_store.keyring_get("any") is None
 
     def test_strips_whitespace(self, mock_keyring_consolidated):
         _, store, _ = mock_keyring_consolidated
         vault = {"k": "  spaced  "}
         store[("code-puppy", "__vault__")] = json.dumps(vault)
-        assert secret_store.get_secret("k") == "spaced"
+        assert secret_store.keyring_get("k") == "spaced"
 
 
 class TestConsolidatedSetSecret:
     def test_stores_in_vault_blob(self, mock_keyring_consolidated):
         _, store, _ = mock_keyring_consolidated
-        assert secret_store.set_secret("tok", "abc123") is True
+        assert secret_store.keyring_set("tok", "abc123") is True
         vault = json.loads(store[("code-puppy", "__vault__")])
         assert vault["tok"] == "abc123"
 
     def test_preserves_existing_keys(self, mock_keyring_consolidated):
         _, store, _ = mock_keyring_consolidated
         store[("code-puppy", "__vault__")] = json.dumps({"old": "val"})
-        secret_store.set_secret("new", "val2")
+        secret_store.keyring_set("new", "val2")
         vault = json.loads(store[("code-puppy", "__vault__")])
         assert vault["old"] == "val"
         assert vault["new"] == "val2"
 
     def test_rejects_blank(self, mock_keyring_consolidated):
-        assert secret_store.set_secret("tok", "   ") is False
+        assert secret_store.keyring_set("tok", "   ") is False
 
 
 class TestConsolidatedDeleteSecret:
@@ -286,7 +286,7 @@ class TestConsolidatedDeleteSecret:
         store[("code-puppy", "__vault__")] = json.dumps(
             {"tok": "old", "keep": "this"}
         )
-        assert secret_store.delete_secret("tok") is True
+        assert secret_store.keyring_delete("tok") is True
         vault = json.loads(store[("code-puppy", "__vault__")])
         assert "tok" not in vault
         assert vault["keep"] == "this"
@@ -294,7 +294,7 @@ class TestConsolidatedDeleteSecret:
     def test_returns_false_when_key_missing(self, mock_keyring_consolidated):
         _, store, _ = mock_keyring_consolidated
         store[("code-puppy", "__vault__")] = json.dumps({})
-        assert secret_store.delete_secret("nope") is False
+        assert secret_store.keyring_delete("nope") is False
 
 
 class TestConsolidatedEnsureMigrated:
@@ -305,19 +305,19 @@ class TestConsolidatedEnsureMigrated:
     ):
         _, _, backend = mock_keyring_consolidated
         assert backend._migrated is False
-        secret_store.get_secret("anything")
+        secret_store.keyring_get("anything")
         assert backend._migrated is True
 
     def test_vault_operations_work_without_migration(
         self, mock_keyring_consolidated,
     ):
         """Vault get/set work even when no migration has populated it."""
-        assert secret_store.set_secret("new_key", "new_val") is True
-        assert secret_store.get_secret("new_key") == "new_val"
+        assert secret_store.keyring_set("new_key", "new_val") is True
+        assert secret_store.keyring_get("new_key") == "new_val"
 
 
 # ---------------------------------------------------------------------------
-# High-level: get_migrated_secret / set_migrated_secret / clear_migrated_secret
+# High-level: get_secret / set_secret / delete_secret
 # ---------------------------------------------------------------------------
 
 
@@ -325,13 +325,13 @@ class TestGetMigratedSecret:
     def test_reads_from_keyring_first(self, mock_keyring):
         _, store = mock_keyring
         store[("code-puppy", "my_key")] = "kr-value"
-        assert secret_store.get_migrated_secret("my_key") == "kr-value"
+        assert secret_store.get_secret("my_key") == "kr-value"
 
     def test_falls_back_to_cfg_and_migrates(self, mock_keyring):
         _, store = mock_keyring
         with patch("code_puppy.config.get_value", return_value="legacy"), \
              patch("code_puppy.config.reset_value") as mock_reset:
-            result = secret_store.get_migrated_secret("my_key")
+            result = secret_store.get_secret("my_key")
 
         assert result == "legacy"
         assert store[("code-puppy", "my_key")] == "legacy"
@@ -340,28 +340,28 @@ class TestGetMigratedSecret:
     def test_leaves_cfg_when_backend_rejects_write(self, broken_keyring):
         with patch("code_puppy.config.get_value", return_value="fallback"), \
              patch("code_puppy.config.reset_value") as mock_reset:
-            result = secret_store.get_migrated_secret("my_key")
+            result = secret_store.get_secret("my_key")
 
         assert result == "fallback"
         mock_reset.assert_not_called()
 
     def test_returns_none_when_nothing_set(self, broken_keyring):
         with patch("code_puppy.config.get_value", return_value=None):
-            assert secret_store.get_migrated_secret("my_key") is None
+            assert secret_store.get_secret("my_key") is None
 
 
 class TestSetMigratedSecret:
     def test_writes_to_keyring_and_scrubs_cfg(self, mock_keyring):
         _, store = mock_keyring
         with patch("code_puppy.config.reset_value") as mock_reset:
-            secret_store.set_migrated_secret("my_key", "new-val")
+            secret_store.set_secret("my_key", "new-val")
 
         assert store[("code-puppy", "my_key")] == "new-val"
         mock_reset.assert_called_once_with("my_key")
 
     def test_falls_back_to_cfg_when_backend_rejects(self, broken_keyring):
         with patch("code_puppy.config.set_config_value") as mock_cfg:
-            secret_store.set_migrated_secret("my_key", "val")
+            secret_store.set_secret("my_key", "val")
 
         mock_cfg.assert_called_once_with("my_key", "val")
 
@@ -371,7 +371,7 @@ class TestClearMigratedSecret:
         _, store = mock_keyring
         store[("code-puppy", "my_key")] = "old"
         with patch("code_puppy.config.reset_value") as mock_reset:
-            secret_store.clear_migrated_secret("my_key")
+            secret_store.delete_secret("my_key")
 
         assert ("code-puppy", "my_key") not in store
         mock_reset.assert_called_once_with("my_key")

@@ -147,7 +147,7 @@ class TestPuppyTokens:
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        with patch("code_puppy.secret_store.get_secret", return_value="keyring-fresh"):
+        with patch("code_puppy.secret_store.keyring_get", return_value="keyring-fresh"):
             assert cp_config.get_puppy_token() == "keyring-fresh"
 
     def test_get_falls_back_to_cfg_and_migrates(self, mock_config_paths):
@@ -159,8 +159,8 @@ class TestPuppyTokens:
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        with patch("code_puppy.secret_store.get_secret", return_value=None), \
-             patch("code_puppy.secret_store.set_secret", return_value=True) as mock_set:
+        with patch("code_puppy.secret_store.keyring_get", return_value=None), \
+             patch("code_puppy.secret_store.keyring_set", return_value=True) as mock_set:
             result = cp_config.get_puppy_token()
 
         assert result == "legacy-tok"
@@ -179,8 +179,8 @@ class TestPuppyTokens:
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        with patch("code_puppy.secret_store.get_secret", return_value=None), \
-             patch("code_puppy.secret_store.set_secret", return_value=False):
+        with patch("code_puppy.secret_store.keyring_get", return_value=None), \
+             patch("code_puppy.secret_store.keyring_set", return_value=False):
             result = cp_config.get_puppy_token()
 
         assert result == "fallback-tok"
@@ -197,7 +197,7 @@ class TestPuppyTokens:
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        with patch("code_puppy.secret_store.get_secret", return_value=None):
+        with patch("code_puppy.secret_store.keyring_get", return_value=None):
             assert cp_config.get_puppy_token() is None
 
     def test_set_writes_to_keyring_and_scrubs_cfg(self, mock_config_paths):
@@ -208,7 +208,7 @@ class TestPuppyTokens:
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        with patch("code_puppy.secret_store.set_secret", return_value=True) as mock_set:
+        with patch("code_puppy.secret_store.keyring_set", return_value=True) as mock_set:
             cp_config.set_puppy_token("new-token-456")
 
         mock_set.assert_called_once_with("puppy_token", "new-token-456")
@@ -224,7 +224,7 @@ class TestPuppyTokens:
         with open(mock_cfg_file, "w") as f:
             config.write(f)
 
-        with patch("code_puppy.secret_store.set_secret", return_value=False):
+        with patch("code_puppy.secret_store.keyring_set", return_value=False):
             cp_config.set_puppy_token("fallback-write")
 
         saved = configparser.ConfigParser()

@@ -5,7 +5,7 @@ import os
 import pathlib
 from typing import Optional
 
-from code_puppy.secret_store import clear_migrated_secret, get_migrated_secret, set_migrated_secret
+from code_puppy.secret_store import delete_secret, get_secret, set_secret
 from code_puppy.session_storage import save_session
 
 
@@ -714,17 +714,17 @@ def get_puppy_token():
     When a legacy cfg value is found, we best-effort migrate it into keyring
     and scrub the plaintext config entry.
     """
-    return get_migrated_secret("puppy_token")
+    return get_secret("puppy_token")
 
 
 def set_puppy_token(token: str):
     """Persist the puppy token to keyring with config-file fallback."""
     normalized = str(token).strip()
     if not normalized:
-        clear_migrated_secret("puppy_token")
+        delete_secret("puppy_token")
         return
 
-    set_migrated_secret("puppy_token", normalized)
+    set_secret("puppy_token", normalized)
 
 
 def get_openai_reasoning_effort() -> str:
@@ -2141,7 +2141,7 @@ def load_api_keys_to_environment():
     for key_name in api_key_names:
         # Only load from config if not already in environment
         if key_name not in os.environ or not os.environ[key_name]:
-            value = get_migrated_secret(key_name) or ""
+            value = get_secret(key_name) or ""
             if value:
                 os.environ[key_name] = value
 
