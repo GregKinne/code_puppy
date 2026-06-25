@@ -24,7 +24,7 @@ from code_puppy.command_line.pagination import (
     get_total_pages,
 )
 from code_puppy.command_line.utils import safe_input
-from code_puppy.config import EXTRA_MODELS_FILE, set_config_value
+from code_puppy.config import EXTRA_MODELS_FILE
 from code_puppy.secret_store import set_secret
 from code_puppy.list_filtering import query_matches_text
 from code_puppy.messaging import emit_error, emit_info, emit_warning
